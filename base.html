@@ -1,20 +1,51 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}SleepSense{% endblock %} · Sleep Disorder Prediction</title>
+<title>{% block title %}SleepSense{% endblock %} · SleepSense</title>
+<script>(function(){try{var m=localStorage.getItem('ss-theme');if(m)document.documentElement.setAttribute('data-theme',m);}catch(e){}})();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <script src="{{ url_for('static', filename='chart.umd.js') }}"></script>
 </head><body>
-<div class="layout">
-  <nav class="side">
-    <div class="brand"><div class="logo">🌙</div>SleepSense</div>
-    <a href="{{ url_for('dashboard') }}" class="{{ 'on' if page=='dashboard' }}">📊 Dashboard</a>
-    <a href="{{ url_for('predict') }}" class="{{ 'on' if page=='predict' }}">🩺 Predict</a>
-    <a href="{{ url_for('performance') }}" class="{{ 'on' if page=='performance' }}">📈 Model Performance</a>
-    <a href="{{ url_for('history') }}" class="{{ 'on' if page=='history' }}">🗂️ History</a>
-    <div class="foot">Leakage-free ML for sleep disorder classification with a counterfactual risk-reduction advisor.<br>Academic demo, not a medical diagnosis.</div>
-  </nav>
+{% from "_macros.html" import icon %}
+<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="logo">{{ icon('moon') }}</div><div>SleepSense<small>Sleep disorder AI</small></div></div>
+    <nav class="nav">
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if page=='dashboard' }}">{{ icon('grid') }} Dashboard</a>
+      <a href="{{ url_for('predict') }}" class="{{ 'on' if page=='predict' }}">{{ icon('pulse') }} Predict</a>
+      <a href="{{ url_for('performance') }}" class="{{ 'on' if page=='performance' }}">{{ icon('chart') }} Model Performance</a>
+      <a href="{{ url_for('history') }}" class="{{ 'on' if page=='history' }}">{{ icon('clock') }} History</a>
+    </nav>
+    <div class="night">
+      <svg class="stars" viewBox="0 0 200 120"><g fill="#fff"><circle cx="20" cy="18" r="1.4"/><circle cx="160" cy="30" r="1.2"/><circle cx="120" cy="12" r="1"/><circle cx="180" cy="90" r="1.4"/><circle cx="60" cy="40" r="1"/><circle cx="95" cy="70" r=".9"/></g></svg>
+      <div><b>Night mode</b><span>Easy on the eyes after dark</span></div>
+      <button class="switch" id="themeBtn" aria-label="Toggle dark mode"></button>
+    </div>
+  </aside>
   <main>{% block content %}{% endblock %}</main>
 </div>
+<script>
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+window._charts=[];
+function themeCharts(){
+  if(!window.Chart)return;
+  Chart.defaults.font.family="Plus Jakarta Sans, Segoe UI, system-ui";
+  Chart.defaults.color=cssVar('--muted');
+  Chart.defaults.borderColor=cssVar('--grid');
+  window._charts.forEach(function(c){
+    ['x','y'].forEach(function(a){if(c.options.scales&&c.options.scales[a]){c.options.scales[a].grid={color:cssVar('--grid')};c.options.scales[a].ticks={...(c.options.scales[a].ticks||{}),color:cssVar('--muted')};}});
+    if(c.options.plugins&&c.options.plugins.legend){c.options.plugins.legend.labels={...(c.options.plugins.legend.labels||{}),color:cssVar('--muted')};}
+    c.update();
+  });
+}
+themeCharts();
+document.getElementById('themeBtn').onclick=function(){
+  var d=document.documentElement, t=d.getAttribute('data-theme')==='dark'?'light':'dark';
+  d.setAttribute('data-theme',t); try{localStorage.setItem('ss-theme',t);}catch(e){}
+  themeCharts();
+};
+</script>
 {% block scripts %}{% endblock %}
 </body></html>

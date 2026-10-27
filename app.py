@@ -26,7 +26,10 @@ if MODEL_PATH is None or DATA_PATH is None:
 FIG_DIR = MODEL_PATH.parent
 DB_PATH = HERE / "predictions.db"
 
-app = Flask(__name__, template_folder=".", static_folder=".", static_url_path="/static")
+# works whether HTML/CSS are in templates/ & static/ folders or loose next to app.py
+_tpl = "templates" if (HERE / "templates").is_dir() else "."
+_sta = "static" if (HERE / "static").is_dir() else "."
+app = Flask(__name__, template_folder=_tpl, static_folder=_sta, static_url_path="/static")
 model = joblib.load(MODEL_PATH)
 CLASSES = list(model.classes_)
 
@@ -38,10 +41,52 @@ bp = df["Blood Pressure"].str.split("/", expand=True).astype(int)
 df["Systolic_BP"], df["Diastolic_BP"] = bp[0], bp[1]
 df = df.drop(columns=["Blood Pressure"])
 dedup = df.drop_duplicates()
-FEATURES = [c for c in df.columns if c != "Sleep Disorder"]
-OCCUPATIONS = sorted(df["Occupation"].unique())
+FEATURES = list(model.feature_names_in_)          # Occupation is NOT used by the model
+OCCUPATIONS = sorted(df["Occupation"].unique()) + ["Student", "Homemaker", "Business Owner", "Retired", "Other"]
 # "typical healthy person" baseline used for explanations
 BASELINE = {c: (float(dedup[c].median()) if pd.api.types.is_numeric_dtype(dedup[c]) else dedup[c].mode()[0]) for c in FEATURES}
+
+# training-data range of each numeric feature (for out-of-distribution checks)
+RANGES = {c: (float(dedup[c].min()), float(dedup[c].max())) for c in FEATURES
+          if pd.api.types.is_numeric_dtype(dedup[c])}
+LOW_CONF = 60.0  # below this confidence the prediction is flagged as uncertain
+
+def reliability(row, conf):
+    """Flag inputs outside the training range and low-confidence predictions."""
+    ood = []
+    for f, (lo, hi) in RANGES.items():
+        v = float(row.at[0, f])
+        if v < lo or v > hi:
+            ood.append({"feature": f, "value": v, "lo": lo, "hi": hi})
+    level = "high" if not ood and conf >= LOW_CONF else ("low" if ood else "medium")
+    return {"ood": ood, "level": level}
+
+# ---------- Knowledge-guided hybrid: ML (SVM) + clinical screening layer ----------
+def clinical_scores(row):
+    """A-priori screening scores, not learned from data.
+    Insomnia: short sleep, poor sleep quality, high stress.
+    Sleep apnea: STOP-BANG-style factors available here (Pressure, BMI, Age, Gender) + raised heart rate."""
+    r = row.iloc[0]
+    ins = (min(max((7 - r["Sleep Duration"]) / 2, 0), 1) + min(max((7 - r["Quality of Sleep"]) / 3, 0), 1)
+           + min(max((r["Stress Level"] - 5) / 4, 0), 1)) / 3
+    hyp = 1.0 if (r["Systolic_BP"] >= 130 or r["Diastolic_BP"] >= 85) else 0.0
+    bmi = {"Normal": 0, "Overweight": 0.5, "Obese": 1}[r["BMI Category"]]
+    apn = (hyp + bmi + (1.0 if r["Age"] > 50 else 0.0) + (0.5 if r["Gender"] == "Male" else 0.0)
+           + (0.5 if r["Heart Rate"] >= 80 else 0.0)) / 4
+    p = {"Insomnia": ins, "None": (1 - ins) * (1 - apn), "Sleep Apnea": apn}
+    tot = sum(p.values()) + 1e-9
+    return [p[c] / tot for c in CLASSES]
+
+ALPHA_IN, ALPHA_OOD = 0.8, 0.25  # ML weight: 80% inside the training range; 25% outside it (ML cannot extrapolate)
+
+def out_of_range(row):
+    return any(not (lo <= float(row.at[0, f]) <= hi) for f, (lo, hi) in RANGES.items())
+
+def hybrid_proba(row):
+    a = ALPHA_OOD if out_of_range(row) else ALPHA_IN
+    ml = model.predict_proba(row[FEATURES])[0]
+    cl = clinical_scores(row)
+    return [a * m + (1 - a) * c for m, c in zip(ml, cl)], list(ml), cl, a
 
 # ---------- database ----------
 def db():
@@ -93,12 +138,12 @@ def explain(row, cls):
     """Model-agnostic explanation: replace each feature with a typical value
     and measure how much the predicted-class probability drops."""
     i = CLASSES.index(cls)
-    base_p = model.predict_proba(row)[0][i]
+    base_p = hybrid_proba(row)[0][i]
     out = []
     for f in FEATURES:
         r2 = row.copy()
         r2[f] = BASELINE[f]
-        out.append((f, round((base_p - model.predict_proba(r2)[0][i]) * 100, 1)))
+        out.append((f, round((base_p - hybrid_proba(r2)[0][i]) * 100, 1)))
     out.sort(key=lambda x: abs(x[1]), reverse=True)
     return out[:6]
 
@@ -137,10 +182,10 @@ def counterfactual(row, max_steps=4):
     prediction to 'None'. Each step picks the change that raises P(None) most."""
     i_none = CLASSES.index("None")
     cur = row.copy()
-    p0 = model.predict_proba(cur)[0][i_none]
+    p0 = hybrid_proba(cur)[0][i_none]
     plan, used = [], set()
     for _ in range(max_steps):
-        if CLASSES[model.predict_proba(cur)[0].argmax()] == "None":
+        if max(range(3), key=lambda k: hybrid_proba(cur)[0][k]) == i_none:
             break
         best = None
         for feat, opts in ACTIONS.items():
@@ -150,21 +195,21 @@ def counterfactual(row, max_steps=4):
                 cand = apply(cur, feat, d)
                 if cand is None:
                     continue
-                p = model.predict_proba(cand)[0][i_none]
+                p = hybrid_proba(cand)[0][i_none]
                 cost = abs(d) if not isinstance(d, str) else 0
                 if best is None or p > best[0] + 1e-9:
                     best = (p, feat, label, cand)
-        if best is None or best[0] <= model.predict_proba(cur)[0][i_none] + 1e-9:
+        if best is None or best[0] <= hybrid_proba(cur)[0][i_none] + 1e-9:
             break
         p, feat, label, cand = best
         plan.append({"feature": feat, "change": label,
                      "from": row.at[0, feat], "to": cand.at[0, feat], "p_none": round(p * 100, 1)})
         used.add(feat); cur = cand
-    final = model.predict_proba(cur)[0]
+    final = hybrid_proba(cur)[0]
+    k = max(range(3), key=lambda j: final[j])
     return {"plan": plan, "start_p": round(p0 * 100, 1),
             "end_p": round(final[i_none] * 100, 1),
-            "end_label": CLASSES[final.argmax()],
-            "success": CLASSES[final.argmax()] == "None"}
+            "end_label": CLASSES[k], "success": CLASSES[k] == "None"}
 
 def form_to_row(f):
     return pd.DataFrame([{
@@ -174,7 +219,7 @@ def form_to_row(f):
         "BMI Category": f["bmi"], "Heart Rate": int(f["heart_rate"]),
         "Daily Steps": int(f["steps"]), "Systolic_BP": int(f["systolic"]),
         "Diastolic_BP": int(f["diastolic"]),
-    }])[FEATURES]
+    }])
 
 def read_csv_table(name):
     p = find(name)
@@ -192,8 +237,9 @@ def dashboard():
     sleep_avg = dedup.groupby("Sleep Disorder")["Sleep Duration"].mean().reindex(CLASSES).round(2)
     stress_avg = dedup.groupby("Sleep Disorder")["Stress Level"].mean().reindex(CLASSES).round(2)
     sys_avg = dedup.groupby("Sleep Disorder")["Systolic_BP"].mean().reindex(CLASSES).round(1)
-    with db() as con:
-        n_pred = con.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
+    con = db()
+    n_pred = con.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
+    con.close()
     return render_template("dashboard.html", page="dashboard",
         total=len(raw), unique=len(dedup), dup_pct=round((1 - len(dedup) / len(raw)) * 100),
         n_pred=n_pred, classes=CLASSES, counts=counts.tolist(),
@@ -206,16 +252,30 @@ def predict():
     result = None
     form = request.form
     if request.method == "POST":
+        if int(form["systolic"]) <= int(form["diastolic"]):
+            return render_template("predict.html", page="predict", result=None, form=form,
+                                   occupations=OCCUPATIONS, error="Systolic BP must be higher than diastolic BP.")
         row = form_to_row(form)
-        probs = model.predict_proba(row)[0]
-        pred = CLASSES[probs.argmax()]
-        conf = round(probs.max() * 100, 1)
+        probs, ml_p, cl_p, alpha = hybrid_proba(row)
+        k = max(range(3), key=lambda j: probs[j])
+        pred = CLASSES[k]
+        conf = round(probs[k] * 100, 1)
         r = row.iloc[0]
-        result = dict(label=pred, confidence=conf,
+        rel = reliability(row, conf)
+        flags = risk_flags(r)
+        advice = ADVICE[pred]
+        if pred == "None" and any(lvl == "danger" for _, lvl in flags):
+            advice = ["The model does not detect a sleep disorder, but serious risk indicators are present.",
+                      "Please get blood pressure and sleep checked by a doctor.",
+                      "Aim for 7–9 hours of sleep and reduce stress."]
+        result = dict(rel=rel, alpha=int(alpha * 100),
+                      ml_probs=[(c, round(p * 100, 1)) for c, p in zip(CLASSES, ml_p)],
+                      cl_probs=[(c, round(p * 100, 1)) for c, p in zip(CLASSES, cl_p)], label=pred, confidence=conf,
                       probs=[(c, round(p * 100, 1)) for c, p in zip(CLASSES, probs)],
-                      advice=ADVICE[pred], flags=risk_flags(r), factors=explain(row, pred),
+                      advice=advice, flags=flags, factors=explain(row, pred),
                       cf=counterfactual(row) if pred != "None" else None)
-        with db() as con:
+        con = db()
+        with con:
             con.execute("""INSERT INTO predictions(ts,name,gender,age,occupation,bmi,sleep,quality,activity,
                 stress,systolic,diastolic,heart,steps,prediction,confidence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (datetime.now().strftime("%Y-%m-%d %H:%M"), form.get("name") or "Anonymous", r["Gender"],
@@ -223,6 +283,7 @@ def predict():
                  int(r["Quality of Sleep"]), int(r["Physical Activity Level"]), int(r["Stress Level"]),
                  int(r["Systolic_BP"]), int(r["Diastolic_BP"]), int(r["Heart Rate"]), int(r["Daily Steps"]),
                  pred, conf))
+        con.close()
     return render_template("predict.html", page="predict", result=result, form=form, occupations=OCCUPATIONS)
 
 @app.route("/performance")
@@ -231,39 +292,67 @@ def performance():
     cmp_cols, cmp_rows = read_csv_table("results_comparison.csv")
     figs = [f for f in ["fig_naive_vs_honest.png", "fig_confusion.png", "fig_shap.png", "fig_eda.png", "fig_corr.png"]
             if (FIG_DIR / f).exists()]
-    return render_template("performance.html", page="performance", cv_cols=cv_cols, cv_rows=cv_rows,
+    best = None
+    if cv_rows:
+        accs = [float(str(r[1]).split()[0]) for r in cv_rows]
+        best = accs.index(max(accs))
+    return render_template("performance.html", page="performance", cv_cols=cv_cols, cv_rows=cv_rows, best=best,
                            cmp_cols=cmp_cols, cmp_rows=cmp_rows, figs=figs,
                            total=len(raw), unique=len(dedup))
 
 @app.route("/history")
 def history():
-    with db() as con:
-        con.row_factory = sqlite3.Row
-        rows = con.execute("SELECT * FROM predictions ORDER BY id DESC").fetchall()
+    con = db()
+    con.row_factory = sqlite3.Row
+    rows = con.execute("SELECT * FROM predictions ORDER BY id DESC").fetchall()
+    con.close()
     summary = {c: sum(1 for r in rows if r["prediction"] == c) for c in CLASSES}
     return render_template("history.html", page="history", rows=rows, summary=summary, classes=CLASSES)
 
+def _ids(raw):
+    return [int(x) for x in raw if str(x).strip().isdigit()]
+
 @app.route("/history/export")
 def export():
-    with db() as con:
-        cur = con.execute("SELECT * FROM predictions ORDER BY id")
+    ids = _ids(request.args.get("ids", "").split(","))
+    con = db()
+    with con:
+        if ids:
+            q = "SELECT * FROM predictions WHERE id IN (%s) ORDER BY id" % ",".join("?" * len(ids))
+            cur = con.execute(q, ids)
+        else:
+            cur = con.execute("SELECT * FROM predictions ORDER BY id")
         buf = io.StringIO(); w = csv.writer(buf)
         w.writerow([d[0] for d in cur.description]); w.writerows(cur.fetchall())
+    con.close()
+    fname = "prediction_history_selected.csv" if ids else "prediction_history.csv"
     return Response(buf.getvalue(), mimetype="text/csv",
-                    headers={"Content-Disposition": "attachment; filename=prediction_history.csv"})
+                    headers={"Content-Disposition": f"attachment; filename={fname}"})
+
+@app.route("/history/delete", methods=["POST"])
+def delete_selected():
+    ids = _ids(request.form.getlist("ids"))
+    if ids:
+        con = db()
+        with con:
+            con.execute("DELETE FROM predictions WHERE id IN (%s)" % ",".join("?" * len(ids)), ids)
+        con.close()
+    return redirect(url_for("history"))
 
 @app.route("/history/clear", methods=["POST"])
 def clear():
-    with db() as con:
+    con = db()
+    with con:
         con.execute("DELETE FROM predictions")
+    con.close()
     return redirect(url_for("history"))
 
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
     """Used by the live What-If sliders (no saving to history)."""
     row = form_to_row(request.get_json())
-    probs = model.predict_proba(row)[0]
-    return jsonify(label=CLASSES[probs.argmax()],
+    probs = hybrid_proba(row)[0]
+    return jsonify(label=CLASSES[max(range(3), key=lambda j: probs[j])],
                    probs={c: round(p * 100, 1) for c, p in zip(CLASSES, probs)})
 
 @app.route("/figures/<path:name>")

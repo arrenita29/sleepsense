@@ -1,67 +1,102 @@
-{% extends "base.html" %}{% block title %}Predict{% endblock %}
+{% extends "base.html" %}{% from "_macros.html" import icon %}{% block title %}Predict{% endblock %}
 {% macro cls(x) %}{{ x|replace(' ','-') }}{% endmacro %}
 {% block content %}
-<h1>Sleep Disorder Prediction</h1>
-<p class="sub">Enter the patient's lifestyle and health details</p>
-<form method="post" class="card noprint" id="pform">
-  <div class="form">
-    <div><label>Patient name (optional)</label><input name="name" value="{{ form.get('name','') }}" placeholder="e.g. Patient 01"></div>
-    <div><label>Gender</label><select name="gender">{% for g in ["Male","Female"] %}<option {% if form.get('gender')==g %}selected{% endif %}>{{g}}</option>{% endfor %}</select></div>
-    <div><label>Age</label><input type="number" name="age" min="18" max="90" required value="{{ form.get('age','35') }}"></div>
-    <div><label>Occupation</label><select name="occupation">{% for o in occupations %}<option {% if form.get('occupation')==o %}selected{% endif %}>{{o}}</option>{% endfor %}</select></div>
-    <div><label>BMI category</label><select name="bmi">{% for b in ["Normal","Overweight","Obese"] %}<option {% if form.get('bmi')==b %}selected{% endif %}>{{b}}</option>{% endfor %}</select></div>
-    <div><label>Sleep duration (hours)</label><input type="number" step="0.1" name="sleep_duration" min="3" max="12" required value="{{ form.get('sleep_duration','7') }}"></div>
-    <div><label>Quality of sleep (1–10)</label><input type="number" name="sleep_quality" min="1" max="10" required value="{{ form.get('sleep_quality','7') }}"></div>
-    <div><label>Physical activity (min/day)</label><input type="number" name="activity" min="0" max="120" required value="{{ form.get('activity','60') }}"></div>
-    <div><label>Stress level (1–10)</label><input type="number" name="stress" min="1" max="10" required value="{{ form.get('stress','5') }}"></div>
-    <div><label>Systolic BP (upper)</label><input type="number" name="systolic" min="80" max="200" required value="{{ form.get('systolic','120') }}"></div>
-    <div><label>Diastolic BP (lower)</label><input type="number" name="diastolic" min="50" max="130" required value="{{ form.get('diastolic','80') }}"></div>
-    <div><label>Heart rate (bpm)</label><input type="number" name="heart_rate" min="40" max="130" required value="{{ form.get('heart_rate','70') }}"></div>
-    <div><label>Daily steps</label><input type="number" name="steps" min="0" max="30000" required value="{{ form.get('steps','7000') }}"></div>
+<div class="top noprint">
+  <div><div class="date">Screening</div><h1>Sleep disorder check</h1><p>Fill in the three sections, or try a sample patient</p></div>
+  <div class="chips">
+    <button class="chip" type="button" onclick="fill('apnea')">🫁 Sample: Apnea</button>
+    <button class="chip" type="button" onclick="fill('insomnia')">😵 Sample: Insomnia</button>
+    <button class="chip" type="button" onclick="fill('healthy')">😴 Sample: Healthy</button>
   </div>
-  <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
-    <button class="btn" type="submit">🔍 Predict</button>
-    <button class="btn ghost" type="button" onclick="fill('apnea')">Sample: Apnea</button>
-    <button class="btn ghost" type="button" onclick="fill('insomnia')">Sample: Insomnia</button>
-    <button class="btn ghost" type="button" onclick="fill('healthy')">Sample: Healthy</button>
+</div>
+
+<form method="post" id="pform" class="noprint">
+  <div class="grid3 gap">
+    <div class="card">
+      <div class="section-title"><span class="dot d1">🧑</span>Profile</div>
+      <div class="fields">
+        <div style="grid-column:1/-1"><label>Patient name <span class="note">(optional)</span></label><input name="name" value="{{ form.get('name','') }}" placeholder="e.g. Patient 01"></div>
+        <div><label>Gender</label><select name="gender">{% for g in ["Male","Female"] %}<option {% if form.get('gender')==g %}selected{% endif %}>{{g}}</option>{% endfor %}</select></div>
+        <div><label>Age</label><input type="number" name="age" min="18" max="90" required value="{{ form.get('age','35') }}"></div>
+        <div><label>Occupation <span class="note">(records only)</span></label><select name="occupation">{% for o in occupations %}<option {% if form.get('occupation')==o %}selected{% endif %}>{{o}}</option>{% endfor %}</select></div>
+        <div><label>BMI category</label><select name="bmi">{% for b in ["Normal","Overweight","Obese"] %}<option {% if form.get('bmi')==b %}selected{% endif %}>{{b}}</option>{% endfor %}</select></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title"><span class="dot d2">🌙</span>Sleep & lifestyle</div>
+      <div class="fields">
+        <div><label>Sleep duration (h)</label><input type="number" step="0.1" name="sleep_duration" min="2" max="12" required value="{{ form.get('sleep_duration','7') }}"></div>
+        <div><label>Sleep quality (1–10)</label><input type="number" name="sleep_quality" min="1" max="10" required value="{{ form.get('sleep_quality','7') }}"></div>
+        <div><label>Stress level (1–10)</label><input type="number" name="stress" min="1" max="10" required value="{{ form.get('stress','5') }}"></div>
+        <div><label>Activity (min/day)</label><input type="number" name="activity" min="0" max="180" required value="{{ form.get('activity','60') }}"></div>
+        <div style="grid-column:1/-1"><label>Daily steps</label><input type="number" name="steps" min="0" max="30000" required value="{{ form.get('steps','7000') }}"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title"><span class="dot d3">❤️</span>Vitals</div>
+      <div class="fields">
+        <div><label>Systolic BP <span class="note">top: <b>120</b>/80</span></label><input type="number" name="systolic" min="80" max="220" required value="{{ form.get('systolic','120') }}"></div>
+        <div><label>Diastolic BP <span class="note">bottom: 120/<b>80</b></span></label><input type="number" name="diastolic" min="40" max="140" required value="{{ form.get('diastolic','80') }}"></div>
+        <div style="grid-column:1/-1"><label>Heart rate (bpm)</label><input type="number" name="heart_rate" min="35" max="150" required value="{{ form.get('heart_rate','70') }}"></div>
+      </div>
+      <button class="btn" type="submit" style="width:100%;justify-content:center;margin-top:18px">{{ icon('pulse') }} Predict</button>
+    </div>
   </div>
 </form>
 
+{% if error %}<div class="callout bad gap">⚠️ {{ error }}</div>{% endif %}
+
 {% if result %}
-<div class="grid2">
-  <div class="card">
-    <div class="result-head">
+{% if result.rel.level != 'high' %}
+<div class="callout {{ 'bad' if result.rel.level=='low' else 'warn' }} gap">
+  <b>{{ '🚫 Low reliability' if result.rel.level=='low' else '⚠️ Uncertain prediction' }}</b>
+  {% if result.rel.ood %} · These inputs are outside what the model was trained on:
+    {% for o in result.rel.ood %}<b>{{ o.feature }}</b> = {{ o.value|round(1) }} <span class="note">({{ o.lo|round(1) }}–{{ o.hi|round(1) }})</span>{{ ', ' if not loop.last }}{% endfor %}.
+    Medical screening rules were given more weight.{% endif %}
+  {% if result.confidence < 60 %} Confidence is {{ result.confidence }}%, so classes are close; rely on the risk indicators too.{% endif %}
+</div>
+{% endif %}
+
+<div class="grid2 gap">
+  <div class="card result-card r-{{ cls(result.label) }}">
+    <div style="display:flex;gap:18px;align-items:flex-start">
       <div style="flex:1">
-        <div class="note">PREDICTION {% if form.get('name') %}· {{ form.get('name') }}{% endif %}</div>
+        <div class="eyebrow">Prediction{% if form.get('name') %} · {{ form.get('name') }}{% endif %}</div>
         <div class="big c-{{ cls(result.label) }}">{{ result.label }}</div>
         <span class="badge b-{{ cls(result.label) }}">Confidence {{ result.confidence }}%</span>
+        <span class="badge b-{{ result.rel.level }}">Reliability: {{ result.rel.level|title }}</span>
       </div>
-      <div style="width:130px"><canvas id="gauge"></canvas></div>
+      <div style="width:140px;flex:none"><canvas id="gauge"></canvas></div>
     </div>
-    <div style="margin-top:18px">
+    <div style="margin-top:20px">
     {% for c,p in result.probs %}
-      <div style="display:flex;justify-content:space-between;font-size:14px"><span>{{ c }}</span><b>{{ p }}%</b></div>
+      <div class="prow"><span>{{ c }}</span><span>{{ p }}%</span></div>
       <div class="bar"><div class="fill f-{{ cls(c) }}" style="width:{{ p }}%"></div></div>
     {% endfor %}
     </div>
+    <details><summary>How this was calculated (hybrid model)</summary>
+      <p class="note" style="margin:8px 0">Final = {{ result.alpha }}% × ML model (SVM) + {{ 100-result.alpha }}% × clinical screening rules{% if result.alpha < 80 %}. ML weight was lowered because some inputs are outside the training range{% endif %}.</p>
+      <table style="font-size:13px"><tr><th>Class</th><th>ML</th><th>Clinical</th><th>Final</th></tr>
+      {% for i in range(3) %}<tr><td>{{ result.probs[i][0] }}</td><td>{{ result.ml_probs[i][1] }}%</td><td>{{ result.cl_probs[i][1] }}%</td><td><b>{{ result.probs[i][1] }}%</b></td></tr>{% endfor %}
+      </table></details>
   </div>
   <div class="card">
-    <h3>⚠️ Clinical risk indicators</h3>
-    {% for t,lvl in result.flags %}<div class="flag {{ lvl }}">{{ '🔴' if lvl=='danger' else ('🟡' if lvl=='warn' else '🟢') }} {{ t }}</div>{% endfor %}
-    <h3 style="margin-top:18px">💡 Recommendations</h3>
+    <h3>⚠️ Risk indicators</h3>
+    {% for t,lvl in result.flags %}<div class="flag {{ lvl }}">{{ '●' }} {{ t }}</div>{% endfor %}
+    <h3 style="margin-top:22px">💡 Recommendations</h3>
     <ul class="adv">{% for a in result.advice %}<li>{{ a }}</li>{% endfor %}</ul>
   </div>
 </div>
 
 <div class="card">
-  <h3>🧠 Why this prediction? (feature contribution)</h3>
-  <p class="note" style="margin-top:-6px">How much each input raises (+) or lowers (−) the probability of <b>{{ result.label }}</b>, compared with a typical person in the dataset.</p>
+  <h3>🧠 Why this prediction?</h3>
+  <p class="sub">How much each input pushes the probability of <b>{{ result.label }}</b> up (+) or down (−), compared with a typical person.</p>
   {% set mx = (result.factors|map(attribute=1)|map('abs')|max) or 1 %}
   {% for f,v in result.factors %}
-  <div class="factor"><span>{{ f }}</span>
+  <div class="factor"><span>{{ f|replace('_',' ') }}</span>
     <div class="ftrack">{% set w = (v|abs)/mx*50 %}
-      <div class="fbar" style="{% if v>=0 %}left:50%;background:#ef4444{% else %}right:50%;background:#3b82f6{% endif %};width:{{ w }}%"></div>
-      <div style="position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:#94a3b8"></div></div>
+      <div class="fbar" style="{% if v>=0 %}left:50%;background:var(--c-apn){% else %}right:50%;background:var(--p500){% endif %};width:{{ w }}%"></div>
+      <div class="mid"></div></div>
     <b style="text-align:right">{{ '+' if v>0 }}{{ v }}%</b></div>
   {% endfor %}
 </div>
@@ -70,38 +105,34 @@
 <div class="card novel">
   <span class="tag">★ NOVEL FEATURE</span>
   <h3>🎯 Personalised Risk-Reduction Advisor</h3>
-  <p class="note" style="margin-top:-6px">Counterfactual search over <b>modifiable</b> factors only (sleep, stress, activity, steps, BP, BMI). Finds the smallest set of changes that moves this patient towards <b>No disorder</b>.</p>
-  <div class="grid2" style="margin-top:14px">
-    <div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:14px">
-        <span>P(No disorder) now: <b>{{ result.cf.start_p }}%</b></span>
-        <span>After plan: <b class="c-None">{{ result.cf.end_p }}%</b></span>
+  <p class="sub">Searches only <b>changeable</b> factors (sleep, stress, activity, steps, BP, BMI) for the smallest set of changes that moves this patient towards <b>No disorder</b>.</p>
+  <div class="grid2">
+    <div class="inner">
+      <div style="display:flex;justify-content:space-between;margin-bottom:12px;font-size:14px">
+        <span>P(no disorder) now <b>{{ result.cf.start_p }}%</b></span><span>after plan <b style="color:#5ff0d6">{{ result.cf.end_p }}%</b></span>
       </div>
       {% for s in result.cf.plan %}
       <div class="step"><div class="n">{{ loop.index }}</div>
-        <div><div class="ch">{{ s.change }}</div><div class="ft">{{ s.feature }}: {{ s.from }} → {{ s.to }}</div></div>
+        <div><div class="ch">{{ s.change }}</div><div class="ft">{{ s.feature|replace('_',' ') }}: {{ s.from }} → {{ s.to }}</div></div>
         <div class="p">{{ s.p_none }}%</div></div>
       {% endfor %}
-      {% if not result.cf.plan %}<p class="note">No single lifestyle change improves the outlook. Medical consultation is recommended.</p>{% endif %}
-      <div class="callout {{ '' if result.cf.success else 'warn' }}" style="margin-top:10px">
-        {% if result.cf.success %}✅ Following these {{ result.cf.plan|length }} change(s), the model predicts <b>No sleep disorder</b>.
-        {% else %}⚠️ Lifestyle changes alone are not enough (prediction stays <b>{{ result.cf.end_label }}</b>). Please consult a doctor.{% endif %}
+      {% if not result.cf.plan %}<p class="note" style="color:rgba(255,255,255,.7)">No single lifestyle change improves the outlook. Medical consultation is recommended.</p>{% endif %}
+      <div class="callout" style="margin:12px 0 0">
+        {% if result.cf.success %}✅ With these {{ result.cf.plan|length }} change(s) the system predicts <b>No sleep disorder</b>.
+        {% else %}⚠️ Lifestyle changes alone are not enough (stays <b>{{ result.cf.end_label }}</b>). Please consult a doctor.{% endif %}
       </div>
     </div>
-    <div>
-      <h3 style="font-size:15px">🔧 Interactive What-If Simulator</h3>
+    <div class="inner">
+      <h3 style="font-size:15px;margin-bottom:12px">🔧 What-if simulator</h3>
       <div id="sliders"></div>
-      <div style="margin-top:6px;padding:12px;border-radius:10px;background:#f8fafc">
-        <div class="note">LIVE PREDICTION</div>
-        <div class="big" id="wlabel" style="font-size:22px">—</div>
-        <div id="wbars"></div>
-      </div>
-      <button class="btn ghost" type="button" style="margin-top:10px" onclick="resetW()">Reset</button>
+      <div class="live"><div class="eyebrow" style="color:rgba(255,255,255,.6)">Live prediction</div>
+        <div class="big" id="wlabel" style="font-size:24px;margin:2px 0 8px">—</div><div id="wbars"></div></div>
+      <button class="btn ghost sm" type="button" style="margin-top:12px;background:rgba(255,255,255,.14);color:#fff" onclick="resetW()">Reset</button>
     </div>
   </div>
 </div>
 {% endif %}
-<div class="noprint" style="margin-bottom:30px"><button class="btn" onclick="window.print()">🖨️ Download patient report (PDF)</button></div>
+<div class="noprint"><button class="btn" onclick="window.print()">{{ icon('print') }} Download patient report (PDF)</button></div>
 {% endif %}
 {% endblock %}
 
@@ -111,25 +142,23 @@ const S={apnea:{gender:'Female',age:50,occupation:'Nurse',bmi:'Overweight',sleep
 insomnia:{gender:'Male',age:43,occupation:'Salesperson',bmi:'Overweight',sleep_duration:6.5,sleep_quality:6,activity:45,stress:7,systolic:130,diastolic:85,heart_rate:72,steps:6000},
 healthy:{gender:'Male',age:35,occupation:'Engineer',bmi:'Normal',sleep_duration:7.5,sleep_quality:8,activity:60,stress:4,systolic:125,diastolic:80,heart_rate:65,steps:5000}};
 function fill(k){for(const[n,v] of Object.entries(S[k])){const e=document.querySelector(`[name=${n}]`);if(e)e.value=v;}}
+const COL={"None":"#14b8a0","Insomnia":"#f5a524","Sleep Apnea":"#ef4565"};
 {% if result %}
-const probs={{ result.probs|tojson }};const lab="{{ result.label }}";
-const gc={"None":"#16a34a","Insomnia":"#d97706","Sleep Apnea":"#dc2626"}[lab];
-new Chart(gauge,{type:'doughnut',data:{datasets:[{data:[{{ result.confidence }},{{ 100-result.confidence }}],backgroundColor:[gc,'#e2e8f0'],borderWidth:0}]},
- options:{cutout:'75%',rotation:-90,circumference:180,plugins:{tooltip:{enabled:false}}}});
+new Chart(gauge,{type:'doughnut',data:{datasets:[{data:[{{ result.confidence }},{{ 100-result.confidence }}],backgroundColor:[COL["{{ result.label }}"],'rgba(150,130,180,.18)'],borderWidth:0,borderRadius:8}]},
+ options:{cutout:'78%',rotation:-90,circumference:180,plugins:{tooltip:{enabled:false},legend:{display:false}}}});
 {% endif %}
 {% if result and result.cf %}
 const base=Object.fromEntries(new FormData(document.getElementById('pform')));
-const SL=[["sleep_duration","Sleep duration (h)",4,9,0.1],["sleep_quality","Sleep quality",1,10,1],["stress","Stress level",1,10,1],
+const SL=[["sleep_duration","Sleep (h)",3,10,0.1],["sleep_quality","Sleep quality",1,10,1],["stress","Stress",1,10,1],
 ["activity","Activity (min)",0,120,5],["steps","Daily steps",1000,15000,500],["systolic","Systolic BP",100,180,1],["diastolic","Diastolic BP",60,120,1]];
 const box=document.getElementById('sliders');
-SL.forEach(([k,l,mn,mx,st])=>{box.insertAdjacentHTML('beforeend',`<div class="slider"><div class="top"><span>${l}</span><span id="v_${k}">${base[k]}</span></div>
+SL.forEach(([k,l,mn,mx,st])=>{box.insertAdjacentHTML('beforeend',`<div class="slider"><div class="top2"><span>${l}</span><span id="v_${k}">${base[k]}</span></div>
 <input type="range" id="s_${k}" min="${mn}" max="${mx}" step="${st}" value="${base[k]}"></div>`);});
-box.insertAdjacentHTML('beforeend',`<div class="slider"><div class="top"><span>BMI category</span></div><select id="s_bmi">${["Normal","Overweight","Obese"].map(b=>`<option ${b==base.bmi?'selected':''}>${b}</option>`).join('')}</select></div>`);
-const COL={"None":"#16a34a","Insomnia":"#d97706","Sleep Apnea":"#dc2626"};
+box.insertAdjacentHTML('beforeend',`<div class="slider"><div class="top2"><span>BMI category</span></div><select id="s_bmi">${["Normal","Overweight","Obese"].map(b=>`<option ${b==base.bmi?'selected':''}>${b}</option>`).join('')}</select></div>`);
 let t;async function live(){const d={...base};SL.forEach(([k])=>{d[k]=document.getElementById('s_'+k).value;document.getElementById('v_'+k).textContent=d[k];});d.bmi=document.getElementById('s_bmi').value;
- const r=await fetch('/api/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(r=>r.json());
+ const r=await fetch('{{ url_for("api_predict") }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(r=>r.json());
  wlabel.textContent=r.label;wlabel.style.color=COL[r.label];
- wbars.innerHTML=Object.entries(r.probs).map(([c,p])=>`<div style="display:flex;justify-content:space-between;font-size:13px"><span>${c}</span><b>${p}%</b></div><div class="bar"><div class="fill" style="width:${p}%;background:${COL[c]}"></div></div>`).join('');}
+ wbars.innerHTML=Object.entries(r.probs).map(([c,p])=>`<div class="prow" style="font-size:13px"><span>${c}</span><span>${p}%</span></div><div class="bar"><div class="fill" style="width:${p}%;background:${COL[c]}"></div></div>`).join('');}
 box.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(live,120);});
 function resetW(){SL.forEach(([k])=>document.getElementById('s_'+k).value=base[k]);document.getElementById('s_bmi').value=base.bmi;live();}
 live();

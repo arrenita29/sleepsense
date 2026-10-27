@@ -1,23 +1,81 @@
-{% extends "base.html" %}{% block title %}History{% endblock %}
+{% extends "base.html" %}{% from "_macros.html" import icon %}{% block title %}History{% endblock %}
 {% block content %}
-<h1>Prediction History</h1>
-<p class="sub">Every prediction is stored in a local SQLite database</p>
-<div class="kpis">
-  <div class="kpi blue"><div class="v">{{ rows|length }}</div><div class="l">Total predictions</div></div>
-  {% for c in classes %}<div class="kpi"><div class="v c-{{ c|replace(' ','-') }}">{{ summary[c] }}</div><div class="l">{{ c }}</div></div>{% endfor %}
+<div class="top">
+  <div><div class="date">Records</div><h1>Prediction history</h1><p>Select records to download or delete only those</p></div>
+  <a class="btn ghost" href="{{ url_for('export') }}">{{ icon('download') }} Export all</a>
 </div>
+
+<div class="grid4 gap">
+  <div class="tile t-violet"><span class="ico">📋</span><b>Total predictions</b><span>All saved records</span><div class="n">{{ rows|length }}</div></div>
+  <div class="tile t-teal"><span class="ico">😴</span><b>No disorder</b><span>Predicted None</span><div class="n">{{ summary['None'] }}</div></div>
+  <div class="tile t-sun"><span class="ico">😵</span><b>Insomnia</b><span>Predicted Insomnia</span><div class="n">{{ summary['Insomnia'] }}</div></div>
+  <div class="tile t-coral"><span class="ico">🫁</span><b>Sleep Apnea</b><span>Predicted Apnea</span><div class="n">{{ summary['Sleep Apnea'] }}</div></div>
+</div>
+
 <div class="card">
-  <div style="display:flex;gap:10px;margin-bottom:14px">
-    <a class="btn" href="{{ url_for('export') }}">⬇️ Export CSV</a>
-    <form method="post" action="{{ url_for('clear') }}" onsubmit="return confirm('Delete all history?')"><button class="btn red">🗑️ Clear</button></form>
-  </div>
   {% if rows %}
-  <div style="overflow-x:auto"><table>
-  <tr><th>Time</th><th>Name</th><th>Gender</th><th>Age</th><th>Occupation</th><th>BMI</th><th>Sleep</th><th>Stress</th><th>BP</th><th>Prediction</th><th>Conf.</th></tr>
-  {% for r in rows %}<tr><td>{{ r.ts }}</td><td>{{ r.name }}</td><td>{{ r.gender }}</td><td>{{ r.age }}</td><td>{{ r.occupation }}</td><td>{{ r.bmi }}</td>
-  <td>{{ r.sleep }} h</td><td>{{ r.stress }}</td><td>{{ r.systolic }}/{{ r.diastolic }}</td>
-  <td><span class="badge b-{{ r.prediction|replace(' ','-') }}">{{ r.prediction }}</span></td><td>{{ r.confidence }}%</td></tr>{% endfor %}
+  <div class="toolbar">
+    <div class="grow" style="position:relative">
+      <span style="position:absolute;left:14px;top:12px;color:var(--muted)">{{ icon('search') }}</span>
+      <input id="q" placeholder="Search by name or occupation…" style="padding-left:44px">
+    </div>
+    <div class="chips" id="chips">
+      <button class="chip on" data-f="all">All</button><button class="chip" data-f="None">None</button>
+      <button class="chip" data-f="Insomnia">Insomnia</button><button class="chip" data-f="Sleep Apnea">Sleep Apnea</button>
+    </div>
+  </div>
+
+  <div class="selbar" id="selbar">
+    <span id="selcount">0 selected</span><span style="flex:1"></span>
+    <button class="btn ghost sm" type="button" onclick="clearSel()">Cancel</button>
+    <button class="btn ghost sm" type="button" onclick="exportSel()">{{ icon('download') }} Download selected</button>
+    <button class="btn danger sm" type="button" onclick="deleteSel()">{{ icon('trash') }} Delete selected</button>
+  </div>
+
+  <form id="bulk" method="post" action="{{ url_for('delete_selected') }}">
+  <div class="tablewrap"><table>
+    <thead><tr><th style="width:40px"><input type="checkbox" id="all" title="Select all"></th><th>Time</th><th>Name</th><th>Gender</th><th>Age</th><th>Occupation</th><th>BMI</th><th>Sleep</th><th>Stress</th><th>BP</th><th>Prediction</th><th>Conf.</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}<tr data-p="{{ r.prediction }}" data-s="{{ (r.name ~ ' ' ~ r.occupation)|lower }}">
+      <td><input type="checkbox" name="ids" value="{{ r.id }}" class="rc"></td>
+      <td class="note">{{ r.ts }}</td><td><b>{{ r.name }}</b></td><td>{{ r.gender }}</td><td>{{ r.age }}</td><td>{{ r.occupation }}</td><td>{{ r.bmi }}</td>
+      <td>{{ r.sleep }} h</td><td>{{ r.stress }}</td><td>{{ r.systolic }}/{{ r.diastolic }}</td>
+      <td><span class="badge b-{{ r.prediction|replace(' ','-') }}">{{ r.prediction }}</span></td><td>{{ r.confidence }}%</td>
+      <td><button type="button" class="iconbtn" title="Delete this record" onclick="deleteOne({{ r.id }})">{{ icon('trash') }}</button></td>
+    </tr>{% endfor %}
+    </tbody>
   </table></div>
-  {% else %}<p class="note">No predictions yet. Go to <a href="{{ url_for('predict') }}">Predict</a>.</p>{% endif %}
+  </form>
+  <div class="empty" id="nomatch" style="display:none">No records match your filter.</div>
+  <form method="post" action="{{ url_for('clear') }}" onsubmit="return confirm('Delete ALL history?')" style="margin-top:16px;text-align:right">
+    <button class="btn ghost sm">{{ icon('trash') }} Clear all</button></form>
+  {% else %}
+  <div class="empty"><div class="big-emoji">🌙</div><h3 style="justify-content:center">No predictions yet</h3><p>Run your first screening to see it here.</p>
+    <a class="btn" href="{{ url_for('predict') }}">Go to Predict</a></div>
+  {% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+const rcs=[...document.querySelectorAll('.rc')], allBox=document.getElementById('all');
+const visible=()=>rcs.filter(c=>c.closest('tr').style.display!=='none');
+function refresh(){
+  const n=rcs.filter(c=>c.checked).length;
+  rcs.forEach(c=>c.closest('tr').classList.toggle('sel',c.checked));
+  const bar=document.getElementById('selbar'); if(!bar)return;
+  bar.classList.toggle('show',n>0); document.getElementById('selcount').textContent=n+' selected';
+  const v=visible(); allBox.checked=v.length&&v.every(c=>c.checked); allBox.indeterminate=n>0&&!allBox.checked;
+}
+if(allBox){allBox.onchange=()=>{visible().forEach(c=>c.checked=allBox.checked);refresh();};}
+rcs.forEach(c=>c.onchange=refresh);
+function clearSel(){rcs.forEach(c=>c.checked=false);refresh();}
+function exportSel(){const ids=rcs.filter(c=>c.checked).map(c=>c.value);location.href='{{ url_for("export") }}?ids='+ids.join(',');}
+function deleteSel(){const n=rcs.filter(c=>c.checked).length;if(n&&confirm('Delete '+n+' selected record(s)?'))document.getElementById('bulk').submit();}
+function deleteOne(id){if(!confirm('Delete this record?'))return;rcs.forEach(c=>c.checked=(c.value==id));document.getElementById('bulk').submit();}
+let f='all';const q=document.getElementById('q');
+function filt(){const s=(q.value||'').toLowerCase();let shown=0;
+  document.querySelectorAll('tbody tr').forEach(tr=>{const ok=(f==='all'||tr.dataset.p===f)&&tr.dataset.s.includes(s);tr.style.display=ok?'':'none';if(ok)shown++;else tr.querySelector('.rc').checked=false;});
+  document.getElementById('nomatch').style.display=shown?'none':'block';refresh();}
+if(q){q.oninput=filt;document.querySelectorAll('#chips .chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('#chips .chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');f=b.dataset.f;filt();});}
+</script>
 {% endblock %}
