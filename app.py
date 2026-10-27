@@ -26,7 +26,7 @@ if MODEL_PATH is None or DATA_PATH is None:
 FIG_DIR = MODEL_PATH.parent
 DB_PATH = HERE / "predictions.db"
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=".", static_folder=".", static_url_path="/static")
 model = joblib.load(MODEL_PATH)
 CLASSES = list(model.classes_)
 
