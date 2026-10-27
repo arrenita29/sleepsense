@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block title %}History{% endblock %}
+{% block content %}
+<h1>Prediction History</h1>
+<p class="sub">Every prediction is stored in a local SQLite database</p>
+<div class="kpis">
+  <div class="kpi blue"><div class="v">{{ rows|length }}</div><div class="l">Total predictions</div></div>
+  {% for c in classes %}<div class="kpi"><div class="v c-{{ c|replace(' ','-') }}">{{ summary[c] }}</div><div class="l">{{ c }}</div></div>{% endfor %}
+</div>
+<div class="card">
+  <div style="display:flex;gap:10px;margin-bottom:14px">
+    <a class="btn" href="{{ url_for('export') }}">⬇️ Export CSV</a>
+    <form method="post" action="{{ url_for('clear') }}" onsubmit="return confirm('Delete all history?')"><button class="btn red">🗑️ Clear</button></form>
+  </div>
+  {% if rows %}
+  <div style="overflow-x:auto"><table>
+  <tr><th>Time</th><th>Name</th><th>Gender</th><th>Age</th><th>Occupation</th><th>BMI</th><th>Sleep</th><th>Stress</th><th>BP</th><th>Prediction</th><th>Conf.</th></tr>
+  {% for r in rows %}<tr><td>{{ r.ts }}</td><td>{{ r.name }}</td><td>{{ r.gender }}</td><td>{{ r.age }}</td><td>{{ r.occupation }}</td><td>{{ r.bmi }}</td>
+  <td>{{ r.sleep }} h</td><td>{{ r.stress }}</td><td>{{ r.systolic }}/{{ r.diastolic }}</td>
+  <td><span class="badge b-{{ r.prediction|replace(' ','-') }}">{{ r.prediction }}</span></td><td>{{ r.confidence }}%</td></tr>{% endfor %}
+  </table></div>
+  {% else %}<p class="note">No predictions yet. Go to <a href="{{ url_for('predict') }}">Predict</a>.</p>{% endif %}
+</div>
+{% endblock %}

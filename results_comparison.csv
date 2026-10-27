@@ -1,0 +1,7 @@
+,Naive split (all rows),Dedup + 5-fold CV
+KNN,0.9204,0.6861
+SVM (RBF),0.9204,0.7169
+Decision Tree,0.9204,0.6752
+Random Forest,0.9204,0.5947
+ANN-MLP,0.9027,0.695
+Voting (Bagging-RF + DT) [ours],0.9115,0.6812

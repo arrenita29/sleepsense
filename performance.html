@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block title %}Model Performance{% endblock %}
+{% block content %}
+<h1>Model Performance</h1>
+<p class="sub">Leakage-free evaluation: {{ unique }} unique records, repeated stratified 5-fold cross-validation (10 repeats)</p>
+<div class="card">
+  <h3>📋 Honest results (deduplicated, mean ± std over 50 folds)</h3>
+  {% if cv_rows %}
+  {% set best = cv_rows|map(attribute=1)|map('truncate',5,True,'')|max %}
+  <table><tr>{% for c in cv_cols %}<th>{{ c }}</th>{% endfor %}</tr>
+  {% for r in cv_rows %}<tr class="{{ 'best' if r[1][:5]==best }}">{% for v in r %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</table>
+  {% else %}<p class="note">Run sleep_project.py to generate results_cv.csv</p>{% endif %}
+</div>
+<div class="grid2">
+  <div class="card">
+    <h3>⚖️ Naive split vs honest evaluation</h3>
+    {% if cmp_rows %}<table><tr><th>Model</th><th>Naive (all rows)</th><th>Honest (dedup CV)</th><th>Inflation</th></tr>
+    {% for r in cmp_rows %}<tr><td>{{ r[0] }}</td><td>{{ '%.3f'|format(r[1]) }}</td><td>{{ '%.3f'|format(r[2]) }}</td>
+      <td style="color:#dc2626">+{{ '%.1f'|format((r[1]-r[2])*100) }} pts</td></tr>{% endfor %}</table>{% endif %}
+  </div>
+  <div class="card">
+    <h3>🔬 Key findings</h3>
+    <div class="callout" style="margin-bottom:10px">1. <b>65%</b> of the {{ total }} rows are exact duplicates; a random 70/30 split puts <b>81%</b> of test rows in training too.</div>
+    <div class="callout" style="margin-bottom:10px">2. This inflates every model to ~90–92% (the base paper reports 92.92%).</div>
+    <div class="callout" style="margin-bottom:10px">3. On unique records, the best honest accuracy is ~72% (SVM); 22 identical profiles have conflicting labels, capping accuracy at 82.6%.</div>
+    <div class="callout">4. Blood pressure, sleep duration and age are the strongest predictors (SHAP).</div>
+  </div>
+</div>
+<div class="grid2">
+{% for f in figs %}<div class="card"><h3>{{ f[4:-4]|replace('_',' ')|title }}</h3><img class="fig" src="{{ url_for('figures', name=f) }}" alt="{{ f }}"></div>{% endfor %}
+</div>
+{% endblock %}

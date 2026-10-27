@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}SleepSense{% endblock %} · Sleep Disorder Prediction</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='chart.umd.js') }}"></script>
+</head><body>
+<div class="layout">
+  <nav class="side">
+    <div class="brand"><div class="logo">🌙</div>SleepSense</div>
+    <a href="{{ url_for('dashboard') }}" class="{{ 'on' if page=='dashboard' }}">📊 Dashboard</a>
+    <a href="{{ url_for('predict') }}" class="{{ 'on' if page=='predict' }}">🩺 Predict</a>
+    <a href="{{ url_for('performance') }}" class="{{ 'on' if page=='performance' }}">📈 Model Performance</a>
+    <a href="{{ url_for('history') }}" class="{{ 'on' if page=='history' }}">🗂️ History</a>
+    <div class="foot">Leakage-free ML for sleep disorder classification with a counterfactual risk-reduction advisor.<br>Academic demo, not a medical diagnosis.</div>
+  </nav>
+  <main>{% block content %}{% endblock %}</main>
+</div>
+{% block scripts %}{% endblock %}
+</body></html>

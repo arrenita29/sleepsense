@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dataset Dashboard</h1>
+<p class="sub">Sleep Health and Lifestyle dataset: overview after cleaning</p>
+<div class="kpis">
+  <div class="kpi blue"><div class="v">{{ total }}</div><div class="l">Total records</div></div>
+  <div class="kpi green"><div class="v">{{ unique }}</div><div class="l">Unique records (used for training)</div></div>
+  <div class="kpi red"><div class="v">{{ dup_pct }}%</div><div class="l">Duplicate rows removed</div></div>
+  <div class="kpi"><div class="v">{{ n_pred }}</div><div class="l">Predictions made in this app</div></div>
+</div>
+<div class="callout warn" style="margin-bottom:20px"><b>Why deduplication matters:</b> {{ dup_pct }}% of rows are exact copies. A random split puts copies in both train and test, inflating accuracy to ~92%. This system is trained and evaluated only on the {{ unique }} unique records.</div>
+<div class="grid3">
+  <div class="card"><h3>Class distribution</h3><canvas id="cls"></canvas></div>
+  <div class="card"><h3>Average sleep duration (h)</h3><canvas id="sleep"></canvas></div>
+  <div class="card"><h3>Average systolic BP</h3><canvas id="bp"></canvas></div>
+</div>
+<div class="grid2">
+  <div class="card"><h3>Disorders by BMI category</h3><canvas id="bmi"></canvas></div>
+  <div class="card"><h3>Average stress level</h3><canvas id="stress"></canvas></div>
+</div>
+<div class="card"><h3>Disorders by occupation</h3><canvas id="occ" height="90"></canvas></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const C={{ classes|tojson }}, COL={"None":"#16a34a","Insomnia":"#d97706","Sleep Apnea":"#dc2626"};
+const cols=C.map(c=>COL[c]);
+Chart.defaults.font.family="Segoe UI, system-ui, Arial";
+new Chart(cls,{type:'doughnut',data:{labels:C,datasets:[{data:{{ counts|tojson }},backgroundColor:cols}]},options:{plugins:{legend:{position:'bottom'}}}});
+const bar=(el,d,l)=>new Chart(el,{type:'bar',data:{labels:C,datasets:[{label:l,data:d,backgroundColor:cols,borderRadius:6}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:false}}}});
+bar(sleep,{{ sleep_avg|tojson }},'Hours'); bar(bp,{{ sys_avg|tojson }},'mmHg'); bar(stress,{{ stress_avg|tojson }},'Stress');
+const stack=(el,labels,data,h)=>new Chart(el,{type:'bar',data:{labels:labels,datasets:C.map(c=>({label:c,data:data[c],backgroundColor:COL[c],borderRadius:4}))},options:{indexAxis:h?'y':'x',plugins:{legend:{position:'bottom'}},scales:{x:{stacked:true},y:{stacked:true}}}});
+stack(bmi,{{ bmi_labels|tojson }},{{ bmi_data|tojson }},false);
+stack(occ,{{ occ_labels|tojson }},{{ occ_data|tojson }},false);
+</script>
+{% endblock %}
